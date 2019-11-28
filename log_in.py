@@ -23,7 +23,7 @@ db = SQLAlchemy(app)
 class User(db.Model):
     __tablename__ = "users"
     id = db.Column(db.Integer, primary_key=True, index=True)
-    username = db.Column(db.String(255), unique=True)
+    username = db.Column(db.String(255), unique=True, index=True)
     password = db.Column(db.String(255))
     full_name = db.Column(db.String(255), nullable=True)
     created_at = db.Column(db.DateTime(), nullable=False, server_default=func.now())

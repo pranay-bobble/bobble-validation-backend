@@ -1,14 +1,20 @@
 import datetime
 import logging
 import os
+import random
 import socket
+import json
 from sqlalchemy.sql import func
 
 from flask import Flask, request, jsonify
 from flask_sqlalchemy import SQLAlchemy
+from sqlalchemy.ext.hybrid import hybrid_property, hybrid_method
+from sqlalchemy import not_, or_, and_
+from sqlalchemy.orm import load_only
 import sqlalchemy
 from functools import wraps
 import jwt
+from datetime import datetime, timedelta
 
 app = Flask(__name__)
 
@@ -17,6 +23,8 @@ app = Flask(__name__)
 app.config['SQLALCHEMY_DATABASE_URI'] = os.environ['SQLALCHEMY_DATABASE_URI']
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 app.config['SECRET_KEY'] = os.environ['SECRET_KEY']
+TASK_REVIEW_MAX_COUNT = 3
+MIN_DAYS_BEFORE_FETCHING_TASK_FOR_REVIEW = 1
 
 db = SQLAlchemy(app)
 
@@ -33,11 +41,11 @@ def token_required(f):
 
         try: 
             data = jwt.decode(token, app.config['SECRET_KEY'])
-            current_user_id = data['id']
+            user_id = data['id']
         except:
             return jsonify({'message' : 'Token is invalid!'}), 401
 
-        return f(current_user_id, *args, **kwargs)
+        return f(user_id, *args, **kwargs)
 
     return decorated
 
@@ -49,18 +57,119 @@ class Tasks(db.Model):
     created_at = db.Column(db.DateTime, nullable=False, server_default=func.now())
     overall_score = db.Column(db.DECIMAL(scale=5, precision=3), nullable=True)
 
+    @hybrid_property
+    def review_completed(self):
+        if (self.overall_score is not None) and (self.num_reviews >= TASK_REVIEW_MAX_COUNT):
+            return True
+        return False
+
+    @hybrid_method
+    def has_completed_review(self):
+        return (self.overall_score.isnot(None)) & (self.num_reviews >= TASK_REVIEW_MAX_COUNT)
+
+class User(db.Model):
+    __tablename__ = "users"
+    id = db.Column(db.Integer, primary_key=True, index=True)
+    username = db.Column(db.String(255), unique=True, index=True)
+    password = db.Column(db.String(255))
+    full_name = db.Column(db.String(255), nullable=True)
+    created_at = db.Column(db.DateTime(), nullable=False, server_default=func.now())
+    deactivated = db.Column(db.Boolean, default=False, nullable=False)
+
+    def __init__(self, username, password, full_name):
+        self.username = username
+        self.password = password
+        self.full_name = full_name
+
+
+
+class Reviews(db.Model):
+    __tablename__ = "reviews"
+    id = db.Column(db.Integer, primary_key=True, index=True)
+    task_id = db.Column(db.Integer, db.ForeignKey('tasks.id'), nullable=False, index=True)
+    user_id = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=False, index=True)
+    started_at = db.Column(db.DateTime(), nullable=False, server_default=func.now())
+    completed_at = db.Column(db.DateTime(), nullable=True)
+    score = db.Column(db.DECIMAL(scale=5, precision=3), nullable=True)
+
+    @hybrid_method
+    def is_complete(self):
+        return self.score.isnot(None)
+
+def get_existing_task_undergoing_review(user_id):
+    review = Reviews.query.filter(
+        Reviews.user_id == user_id,
+        Reviews.score.is_(None)
+    ).first()
+
+    if review is None:
+        return None
+    
+    task = Tasks.query.filter(
+        Tasks.id == review.task_id,
+    ).first()
+
+    return task
+
+def remove_duplicate_reviews(user_id, task_id):
+    reviews = Reviews.query.filter(
+        Reviews.user_id == user_id,
+        Reviews.task_id == task_id,
+        not_(Reviews.is_complete())
+    ).all()
+
+    if reviews is not None and len(reviews) > 0:
+        for review in reviews:
+            db.session.delete(review)
+
+        db.session.commit()
+
+def initialise_review(user_id, task_id):
+    review = Reviews()
+    review.task_id = task_id
+    review.user_id = user_id
+    db.session.add(review)
+    db.session.commit()
+
+def get_task_for_review(user_id):
+    existing_task = get_existing_task_undergoing_review(user_id)
+    if existing_task is not None:
+        if not existing_task.review_completed:
+            return existing_task
+        remove_duplicate_reviews(user_id, existing_task.id)
+
+    tasks_reviewed = db.session.query(Reviews.task_id).distinct().filter(
+        Reviews.user_id == user_id,
+        Reviews.is_complete()
+    ).subquery('tasks_reviewed')
+
+    tasks_undergoing_review = db.session.query(Reviews.task_id).distinct().filter(
+        not_(Reviews.is_complete()),
+        Reviews.started_at > (datetime.now() - timedelta(days=MIN_DAYS_BEFORE_FETCHING_TASK_FOR_REVIEW))
+    ).subquery('tasks_undergoing_review')
+
+    task_ids = Tasks.query.options(load_only(*['id'])).filter(
+        not_(Tasks.has_completed_review()),
+        not_(Tasks.id.in_(tasks_undergoing_review)),
+        not_(Tasks.id.in_(tasks_reviewed)),
+    ).all()
+
+    task_id = random.choice(task_ids).id
+
+    task = Tasks.query.filter_by(id=task_id).first()
+
+    if task is not None:
+        initialise_review(user_id, task.id)
+
+    return task
+
+
 @app.route('/get_tasks', methods=['GET'])
 @token_required
-def get_tasks(current_user_id):
-    tasks = Tasks.query.order_by(sqlalchemy.asc(Tasks.id)).limit(10)
-    results = [
-        'Id: {} Img_Name: {}'.format(x.id, x.source_file)
-        for x in tasks]
-    results.append("CURRENT USER ID {}".format(current_user_id))
+def get_tasks(user_id):
 
-    output = 'Last 10 visits:\n{}'.format('\n'.join(results))
-
-    return output, 200, {'Content-Type': 'text/plain; charset=utf-8'}
+    task = get_task_for_review(user_id)
+    return jsonify({'message':task.source_file})
 
 if __name__ == '__main__':
     # This is used when running locally. Gunicorn is used to run the
