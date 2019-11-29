@@ -25,6 +25,8 @@ app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 app.config['SECRET_KEY'] = os.environ['SECRET_KEY']
 TASK_REVIEW_MAX_COUNT = 3
 MIN_DAYS_BEFORE_FETCHING_TASK_FOR_REVIEW = 1
+# Use BUCKET_NAME or the project default bucket.
+BUCKET_NAME = os.environ['BUCKET_NAME']
 
 db = SQLAlchemy(app)
 
@@ -169,7 +171,9 @@ def get_task_for_review(user_id):
 def get_tasks(user_id):
 
     task = get_task_for_review(user_id)
-    return jsonify({'message':task.source_file})
+    input_file_path = "https://storage.googleapis.com/{}/image-segmentation/images/input/{}".format(BUCKET_NAME, task.source_file)
+    output_file_path = "https://storage.googleapis.com/{}/image-segmentation/images/output/{}".format(BUCKET_NAME, task.source_file)
+    return jsonify({'task_id':task.id, "input_url":input_file_path, "output_url":output_file_path})
 
 if __name__ == '__main__':
     # This is used when running locally. Gunicorn is used to run the

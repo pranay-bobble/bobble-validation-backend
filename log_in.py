@@ -49,7 +49,7 @@ def log_in():
         return make_response('User disabled', 401, {'WWW-Authenticate' : 'Basic realm="User disabled!"'})
 
     if check_password_hash(user.password, data['password']):
-        token = jwt.encode({'id' : user.id, 'exp' : datetime.datetime.utcnow() + datetime.timedelta(minutes=30)}, app.config['SECRET_KEY'])
+        token = jwt.encode({'id' : user.id, 'exp' : datetime.datetime.utcnow() + datetime.timedelta(hours=12)}, app.config['SECRET_KEY'])
         return jsonify({'token':token.decode('UTF-8')})
     return make_response('Wrong password', 401, {'WWW-Authenticate' : 'Basic realm="Wrong password!"'})
 
