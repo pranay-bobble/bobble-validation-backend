@@ -38,20 +38,21 @@ class User(db.Model):
 def log_in():
     data = request.get_json()
     if not data or not data['username'] or not data['password']:
-        return make_response('Details not fulfilled', 401, {'WWW-Authenticate' : 'Basic realm="Details required!"'})
+        return make_response(jsonify(status="error", errorDescription="Details not fulfilled"), 400)
 
     user = User.query.filter_by(username=data['username']).first()
 
     if not user:
-        return make_response('Invalid user', 401, {'WWW-Authenticate' : 'Basic realm="Invalid user!"'})
+        return make_response(jsonify(status="error", errorDescription="Invalid user"), 400)
 
     if (user.deactivated):
-        return make_response('User disabled', 401, {'WWW-Authenticate' : 'Basic realm="User disabled!"'})
+        return make_response(jsonify(status="error", errorDescription="User disabled"), 400)
 
     if check_password_hash(user.password, data['password']):
         token = jwt.encode({'id' : user.id, 'exp' : datetime.datetime.utcnow() + datetime.timedelta(hours=12)}, app.config['SECRET_KEY'])
-        return jsonify({'token':token.decode('UTF-8')})
-    return make_response('Wrong password', 401, {'WWW-Authenticate' : 'Basic realm="Wrong password!"'})
+        return make_response(jsonify(status="success", token=token.decode('UTF-8')), 200)
+        
+    return make_response(jsonify(status="error", errorDescription="Wrong password"), 400)
 
 
 if __name__ == '__main__':

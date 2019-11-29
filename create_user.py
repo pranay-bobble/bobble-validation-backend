@@ -37,12 +37,12 @@ def create_user():
     data = request.get_json()
 
     if not data or not data['username'] or not data['password'] or not data['full_name']:
-        return make_response('Details not fulfilled', 401, {'WWW-Authenticate' : 'Basic realm="Details required!"'})
+        return make_response(jsonify(status="error", errorDescription="Details not fulfilled"), 400)
 
     user = User.query.filter_by(username=data['username']).first()
 
     if user:
-        return make_response('Please change username', 401, {'WWW-Authenticate' : 'Basic realm="Please change username!"'})
+        return make_response(jsonify(status="error", errorDescription="Please change username"), 400)
 
     hashed_password = generate_password_hash(data['password'], method='sha256')
 
@@ -50,7 +50,7 @@ def create_user():
     db.session.add(new_user)
     db.session.commit()
 
-    return jsonify({'message' : 'New user created with username {}'.format(data['username'])})
+    return make_response(jsonify(status="success", message="New user created with username {}".format(data['username'])), 200)
 
 if __name__ == '__main__':
     # This is used when running locally. Gunicorn is used to run the
