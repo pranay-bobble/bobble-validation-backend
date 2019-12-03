@@ -55,7 +55,7 @@ def log_in():
         
     return make_response(jsonify(status="error", errorDescription="Wrong password"), 400)
 
-
+__all__ = ["log_in"]
 # if __name__ == '__main__':
 #     # This is used when running locally. Gunicorn is used to run the
 #     # application on Google App Engine. See entrypoint in app.yaml.
