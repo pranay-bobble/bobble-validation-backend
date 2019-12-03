@@ -17,6 +17,7 @@ app = Flask(__name__)
 app.config['SQLALCHEMY_DATABASE_URI'] = os.environ['SQLALCHEMY_DATABASE_URI']
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 app.config['SECRET_KEY'] = os.environ['SECRET_KEY']
+app.config['PRIVATE_KEY'] = os.environ['PRIVATE_KEY'].replace('\\n', '\n')
 
 db = SQLAlchemy(app)
 
@@ -49,14 +50,14 @@ def log_in():
         return make_response(jsonify(status="error", errorDescription="User disabled"), 400)
 
     if check_password_hash(user.password, data['password']):
-        token = jwt.encode({'id' : user.id, 'exp' : datetime.datetime.utcnow() + datetime.timedelta(hours=12)}, app.config['SECRET_KEY'])
-        return make_response(jsonify(status="success", token=token.decode('UTF-8')), 200)
+        token = jwt.encode({'id' : user.id, 'exp' : datetime.datetime.utcnow() + datetime.timedelta(hours=12)}, app.config['PRIVATE_KEY'], algorithm='RS256')
+        return make_response(jsonify(status="success", token=token.decode('UTF-8')),  200)
         
     return make_response(jsonify(status="error", errorDescription="Wrong password"), 400)
 
 
-if __name__ == '__main__':
-    # This is used when running locally. Gunicorn is used to run the
-    # application on Google App Engine. See entrypoint in app.yaml.
-    app.run(host='127.0.0.1', port=8080, debug=True)
+# if __name__ == '__main__':
+#     # This is used when running locally. Gunicorn is used to run the
+#     # application on Google App Engine. See entrypoint in app.yaml.
+#     app.run(host='127.0.0.1', port=8080, debug=True)
 

@@ -15,6 +15,7 @@ app = Flask(__name__)
 # Environment variables are defined in app.yaml.
 app.config['SQLALCHEMY_DATABASE_URI'] = os.environ['SQLALCHEMY_DATABASE_URI']
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
+app.config['SECRET_KEY'] = os.environ['SECRET_KEY']
 
 db = SQLAlchemy(app)
 
@@ -52,7 +53,7 @@ def create_user():
 
     return make_response(jsonify(status="success", message="New user created with username {}".format(data['username'])), 200)
 
-if __name__ == '__main__':
-    # This is used when running locally. Gunicorn is used to run the
-    # application on Google App Engine. See entrypoint in app.yaml.
-    app.run(host='127.0.0.1', port=8080, debug=True)
+# if __name__ == '__main__':
+#     # This is used when running locally. Gunicorn is used to run the
+#     # application on Google App Engine. See entrypoint in app.yaml.
+#     app.run(host='127.0.0.1', port=8080, debug=True)

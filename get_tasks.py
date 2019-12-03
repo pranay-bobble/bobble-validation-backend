@@ -22,9 +22,9 @@ app = Flask(__name__)
 # Environment variables are defined in app.yaml.
 app.config['SQLALCHEMY_DATABASE_URI'] = os.environ['SQLALCHEMY_DATABASE_URI']
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
-app.config['SECRET_KEY'] = os.environ['SECRET_KEY']
-TASK_REVIEW_MAX_COUNT = 3
-MIN_DAYS_BEFORE_FETCHING_TASK_FOR_REVIEW = 1
+app.config['PUBLIC_KEY'] = os.environ['PUBLIC_KEY'].replace('\\n', '\n')
+app.config['TASK_REVIEW_MAX_COUNT'] = os.environ['TASK_REVIEW_MAX_COUNT']
+app.config['MIN_DAYS_BEFORE_FETCHING_TASK_FOR_REVIEW'] = os.environ['MIN_DAYS_BEFORE_FETCHING_TASK_FOR_REVIEW']
 # Use BUCKET_NAME or the project default bucket.
 BUCKET_NAME = os.environ['BUCKET_NAME']
 
@@ -42,7 +42,7 @@ def token_required(f):
             return jsonify({'message' : 'Token is missing!'}), 401
 
         try: 
-            data = jwt.decode(token, app.config['SECRET_KEY'])
+            data = jwt.decode(token, app.config['PUBLIC_KEY'], algorithms='RS256')
             user_id = data['id']
         except:
             return jsonify({'message' : 'Token is invalid!'}), 401
@@ -61,13 +61,13 @@ class Tasks(db.Model):
 
     @hybrid_property
     def review_completed(self):
-        if (self.overall_score is not None) and (self.num_reviews >= TASK_REVIEW_MAX_COUNT):
+        if (self.overall_score is not None) and (self.num_reviews >= int(app.config['TASK_REVIEW_MAX_COUNT'])):
             return True
         return False
 
     @hybrid_method
     def has_completed_review(self):
-        return (self.overall_score.isnot(None)) & (self.num_reviews >= TASK_REVIEW_MAX_COUNT)
+        return (self.overall_score.isnot(None)) & (self.num_reviews >= int(app.config['TASK_REVIEW_MAX_COUNT']))
 
 class User(db.Model):
     __tablename__ = "users"
@@ -147,7 +147,7 @@ def get_task_for_review(user_id):
 
     tasks_undergoing_review = db.session.query(Reviews.task_id).distinct().filter(
         not_(Reviews.is_complete()),
-        Reviews.started_at > (datetime.now() - timedelta(days=MIN_DAYS_BEFORE_FETCHING_TASK_FOR_REVIEW))
+        Reviews.started_at > (datetime.now() - timedelta(days=int(app.config['MIN_DAYS_BEFORE_FETCHING_TASK_FOR_REVIEW'])))
     ).subquery('tasks_undergoing_review')
 
     task_ids = Tasks.query.options(load_only(*['id'])).filter(
@@ -171,11 +171,13 @@ def get_task_for_review(user_id):
 def get_tasks(user_id):
 
     task = get_task_for_review(user_id)
+    if task is None:
+        return make_response(jsonify(status="error", errorDescription="No task error!"), 400)
     input_file_path = "https://storage.googleapis.com/{}/image-segmentation/images/input/{}".format(BUCKET_NAME, task.source_file)
     output_file_path = "https://storage.googleapis.com/{}/image-segmentation/images/output/{}".format(BUCKET_NAME, task.source_file)
     return make_response(jsonify(status="success", task_id=task.id, input_url=input_file_path, output_url=output_file_path), 200)
 
-if __name__ == '__main__':
-    # This is used when running locally. Gunicorn is used to run the
-    # application on Google App Engine. See entrypoint in app.yaml.
-    app.run(host='127.0.0.1', port=8080, debug=True)
+# if __name__ == '__main__':
+#     # This is used when running locally. Gunicorn is used to run the
+#     # application on Google App Engine. See entrypoint in app.yaml.
+#     app.run(host='127.0.0.1', port=8080, debug=True)
