@@ -3,4 +3,4 @@ Flask-SQLAlchemy==2.4.1
 gunicorn==19.9.0
 PyMySQL==0.9.3
 pyjwt==1.7.1
-werkzeug==0.16.0
+werkzeug==2.2.3
